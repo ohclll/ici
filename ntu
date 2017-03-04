@@ -1,0 +1,151 @@
+"""
+NTU dataset
+===========
+
+Joint
+-------------
+x,y,x
+    3D location of the joint
+depthXY
+    2D location of the joint in corresponding depth/IR frame
+colorXY
+    2D location of the joint in corresponding RGB frame
+orientationW,orientationX,orientationY,orientationZ
+    The orientation of the joint
+trackingState
+    Inferred	1 	The joint data is inferred and confidence in the position data is lower than if it were Tracked.
+    NotTracked	0 	The joint data is not tracked and no data is known about this joint.
+    Tracked	    2 	The joint data is being tracked and the data can be trusted.
+
+Body
+-------------
+bodyID
+    tracking id, 用于定位不同frame中哪些body是同一个人
+clipedEdges
+    Bottom	8   The user's body extends below the camera's field of view.
+    Left	2   The user's body extends to the left of the camera's field of view.
+    None	0   None of the user's body is out of the camera's field of view, the user is fully visible.
+    Right	1   The user's body extends to the right of the camera's field of view.
+    Top	    4   The user's body extends above the camera's field of view.
+handLeftConfidence
+    the confidence of the body’s left hand state
+handLeftState
+    Unknown     0   The state of the hand is unknown.
+    NotTracked  1   Hand state is not tracked.
+    Open        2   The hand is open.
+    Closed      3   The hand is closed.
+    Lasso       4   The hand is in the lasso state.
+handRightConfidence
+    the confidence of the body’s right hand state
+handRightState
+    same as 'handLeftState'
+isResticted
+    whether or not the body is restricted.
+leanXY
+    Leaning left and right corresponds to X movement; leaning forward and back corresponds to Y movement.
+    The values range between -1 and 1 in both directions, where 1 roughly corresponds to 45 degrees of lean.
+trackingState
+    same as Joint's trackingState
+jointCount
+    the number of joints in a body.
+joints
+    body's joints
+
+Frame
+-------------
+bodyCount
+    the number of bodied in the frame
+bodies
+
+"""
+import os
+import io
+import glob
+import os.path as osp
+import numpy as np
+
+from collections import namedtuple
+
+Joint_v0 = namedtuple('Joint', ['x', 'y', 'z',
+                                'depthX', 'depthY',
+                                'colorX', 'colorY',
+                                'orientationW',
+                                'orientationX',
+                                'orientationY',
+                                'orientationZ',
+                                'trackingState'])
+Joint = namedtuple('Joint', ['location',
+                             'depthXY',
+                             'colorXY',
+                             'orientation',
+                             'trackingState'])
+Joints = namedtuple('Joints', ['spineBase', 'spineMid', 'neck', 'head',
+                               'shoulderLeft', 'elbowLeft', 'wristLeft', 'handLeft',
+                               'shoulderRight', 'elbowRight', 'wristRight', 'handRight',
+                               'hipLeft', 'kneeLeft', 'ankleLeft', 'footLeft',
+                               'hipRight', 'kneeRight', 'ankleRight', 'footRight',
+                               'spineShoulder', 'handTipLeft', 'thumbLeft', 'handTipRight', 'thumbRight'])
+Body = namedtuple('Body', ['bodyID',
+                           'clipedEdges',
+                           'handLeftConfidence',
+                           'handLeftState',
+                           'handRightConfidence',
+                           'handRightState',
+                           'isResticted',
+                           'leanXY',
+                           'trackingState',
+                           'jointCount',
+                           'joints'])
+Frame = namedtuple('Frame', ['bodyCount', 'bodies'])
+
+
+def read_joint(f):
+    line = [float(x) for x in f.readline().strip().split(' ')]
+    line[-1] = int(line[-1])
+    joint = Joint(*([line[:3], line[3:5], line[5:7], line[7:11], line[-1]]))
+    return joint
+
+
+def read_body(f):
+    line = f.readline().strip().split(' ')
+    body_att = [int(x) for x in line[:7]]
+    lean_vec = [float(x) for x in line[7:9]]
+    trackingState = int(line[-1])
+    jointCount = int(f.readline()[:-1])
+    joints = []
+    for i in range(jointCount):
+        joint = read_joint(f)
+        joints.append(joint)
+    body = Body(*(body_att + [lean_vec, trackingState, jointCount, Joints(*joints)]))
+    return body
+
+
+def read_frame(f):
+    bodyCount = int(f.readline()[:-1])
+    bodies = []
+    for i in range(bodyCount):
+        bodies.append(read_body(f))
+    frame = Frame(bodyCount, bodies)
+    return frame
+
+
+def read_video(path):
+    with open(path) as p:
+        with io.StringIO(p.read()) as f:
+            frameCount = int(f.readline()[:-1])
+            video = []
+            for i in range(frameCount):
+                frame = read_frame(f)
+                video.append(frame)
+            return video
+
+
+class NTU:
+    def __init__(self, data_dir):
+        self.data_dir = data_dir
+
+
+if __name__ == '__main__':
+    data_dir = 'F:\dataset/UCF101\AllSkeletonFiles_remove_nan_nolabel'
+    path = osp.join(data_dir, '000426.skeleton')
+    video = read_video(path)
